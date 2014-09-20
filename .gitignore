@@ -8,6 +8,7 @@
 
 # IDE project files
 /nbproject/
+ipch/
 *.dir/
 *.suo
 *.sdf
