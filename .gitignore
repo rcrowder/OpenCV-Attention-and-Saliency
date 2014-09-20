@@ -1,0 +1,34 @@
+.metadata
+.idea
+*.manifest
+*.cache
+*~
+*.DS_Store
+*.swp
+
+# IDE project files
+/nbproject/
+*.dir/
+*.suo
+*.sdf
+*.dll
+
+# Build files
+Release/
+Debug/
+build/
+*.obj
+*.log
+*.tlog
+*.vcxproj.filters
+*.vcxproj.user
+*.in
+
+# Data files
+data/
+
+# /
+/.gdb_history
+
+# Doxygen generated doc
+html/
