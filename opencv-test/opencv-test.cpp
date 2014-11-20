@@ -17,6 +17,23 @@ IEEE Transactions on Pattern Analysis and Machine Intelligence, 20(11), 1254–125
 }
 */
 
+/*
+Wavelet decomposition seems relevant
+Saliency Map feeds into SDR
+Gabor or feature filtering?
+
+1) Focus of Attention is shifted to the location of the winner neuron
+2) The global inhibition of the WTA (winner-takes-all) is triggered and completely inhibits (resets) all WTA neurons
+3) Local inhibition is transiently activated in the Saliency Map, in an area with the size and new location of the FOA
+
+3 prevents FOA fromimmediately returning to a previously attended location. In order to slightly bias the model to subsequently jump to salient locations spatially close to the currently attended location, a small excitation is transiently activated in the SM, in a new surroundof the FOA ("proxminity preference" rule of Kock and Ullman)
+
+With no top-down instruction the FOA is a disk radius fixed to one sixth of width/height
+FOA jumps from one salient location to the next in approx. 30-70ms
+An attended area is inhibited for approx. 500-900ms
+
+*/
+
 #include <opencv2/opencv.hpp>
 
 #include <vector>
@@ -26,9 +43,12 @@ IEEE Transactions on Pattern Analysis and Machine Intelligence, 20(11), 1254–125
 
 #include <time.h>
 
+#include "opencv2/bioinspired/retina.hpp"
+#include "opencv2/face.hpp"
 #include "BMS.h"
 
 using namespace std;
+using namespace cv;
 
 #ifndef uint8_t
 #define uint8_t		unsigned char
@@ -41,36 +61,15 @@ static const vector<cv::Vec3f>::size_type cMaxNumOfSaccadeCandidates = 4;
 
 int getOtsuThreshold(cv::Mat& src, float *maxValue);
 int connectedComponents(cv::Mat &L, const cv::Mat &I, int connectivity);
-void testLBPHFaceRecognizer();
 
 cv::MatND retinaHistogram_magno;
 int histogramSize = 256;
  
 
-static void read_csv(const string& filename, vector<cv::Mat>& images, vector<int>& labels, char separator = ';') {
-    std::ifstream file(filename.c_str(), ifstream::in);
-    if (!file) {
-        string error_message = "No valid input file was given, please check the given filename.";
-        CV_Error(CV_StsBadArg, error_message);
-    }
-    string line, path, classlabel;
-    while (getline(file, line)) {
-        stringstream liness(line);
-        getline(liness, path, separator);
-        getline(liness, classlabel);
-        if(!path.empty() && !classlabel.empty()) {
-            images.push_back(cv::imread(path, 0));
-            labels.push_back(atoi(classlabel.c_str()));
-        }
-    }
-}
-
 int main( int argc, char** argv )
 {
-	//testLBPHFaceRecognizer();
-
 	bool bCalc_Regions = true;
-	bool bCalc_HoughCircles = true;
+	bool bCalc_HoughCircles = false;
 	bool bCalc_Histogram = true;
 	bool bCalc_BMS = false;
 
@@ -85,10 +84,10 @@ int main( int argc, char** argv )
     cv::Mat inputFrame;
     cv::VideoCapture videoCapture; // in case a video media is used, its manager is declared here
 
-	//videoCapture.open("./Wildlife.wmv");	// 10 frames per second, loops
+	videoCapture.open("./Wildlife.wmv");	// 10 frames per second, loops
 	//videoCapture.open("./bbc_two.mp4");	// 25 frames per second
 	//videoCapture.open("./768x576.avi");	// 10 frames per second, loops
-	videoCapture.open(0);
+	//videoCapture.open(0);
 
 	time(&start);
 
@@ -96,14 +95,15 @@ int main( int argc, char** argv )
 	frameCount++;
 	if (inputFrame.empty())
 	{
-		inputFrame = cv::imread("./Burt.jpg");
+		cv::String fileName = "./Burt.jpg";
+		inputFrame = cv::imread(fileName, 0);
 
 		windowWidthScale = 0.125;
 		windowHeightScale = 0.125;
 	}
 
 	if (!inputFrame.empty())
-	    resize(inputFrame, inputFrame, cv::Size(), windowWidthScale, windowHeightScale, CV_INTER_AREA);
+	    resize(inputFrame, inputFrame, cv::Size(), windowWidthScale, windowHeightScale, INTER_AREA);
  
     // Declare retina output buffers
     cv::Mat retinaOutput_parvo, prev_retinaOutput_parvo;
@@ -118,6 +118,7 @@ int main( int argc, char** argv )
 	int fontFace = cv::FONT_HERSHEY_PLAIN;
     double fontScale = 1;
     int thickness = 1;
+	bool useLogSampling = false;
  
     //////////////////////////////////////////////////////////////////////////////
     // Program start in a try/catch safety context (Retina may throw errors)
@@ -125,14 +126,17 @@ int main( int argc, char** argv )
     {
         // create a retina instance with default parameters setup, uncomment the initialisation you wanna test
 		// http://docs.opencv.org/doc/tutorials/contrib/retina_model/retina_model.html
-        cv::Ptr<cv::Retina> myRetina;
- 
-        // Allocate "classical" retina :
-        myRetina = new cv::Retina(inputFrame.size());
+        cv::Ptr<bioinspired::Retina> myRetina;
 
-		// Activate log sampling (favour foveal vision and subsamples peripheral vision)
-        //myRetina = new cv::Retina(inputFrame.size(), true, cv::RETINA_COLOR_BAYER, true, 2.0, 10.0);
- 
+		// Activate log sampling? (favour foveal vision and subsamples peripheral vision)
+		if (useLogSampling)
+		{
+			myRetina = cv::bioinspired::createRetina(inputFrame.size(), true, cv::bioinspired::RETINA_COLOR_BAYER, true, 2.0, 10.0);
+		}
+		else
+			// -> else allocate "classical" retina :
+			myRetina = cv::bioinspired::createRetina(inputFrame.size());
+
         // save default retina parameters file in order to let you see this and maybe modify it and reload using method "setup"
         myRetina->write("RetinaDefaultParameters.xml");
  
@@ -165,7 +169,7 @@ int main( int argc, char** argv )
 				frameCount++;
 
 				if (!inputFrame.empty())
-				    resize(inputFrame, inputFrame, cv::Size(), windowWidthScale, windowHeightScale, CV_INTER_AREA);
+				    resize(inputFrame, inputFrame, cv::Size(), windowWidthScale, windowHeightScale, INTER_AREA);
 
 	            prev_retinaOutput_parvo = retinaOutput_parvo;
 	            prev_retinaOutput_magno = retinaOutput_magno;
@@ -190,7 +194,7 @@ int main( int argc, char** argv )
             {
 				// Create the Threshold version of the magno pathway image
                 double high_thres = cv::threshold(retinaOutput_magno, retinaThreshold_magno, 
-					(double)Magno_OtsuThreshold, 255.0, CV_THRESH_TOZERO);
+					(double)Magno_OtsuThreshold, 255.0, THRESH_TOZERO);
 
 				// Copy parvo pathway details using the thresholded magno pathway as a mask
 				retinaAreaOfInterest = cv::Scalar(0);
@@ -222,13 +226,13 @@ int main( int argc, char** argv )
 
 					// Threshold the edges image to binary
 					retinaAOIbinary = cv::Mat::zeros(retinaAOIedges.rows, retinaAOIedges.cols, CV_8UC1);
-					cv::threshold(retinaAOIedges, retinaAOIbinary, 0.0, 255.0, CV_THRESH_BINARY);
+					cv::threshold(retinaAOIedges, retinaAOIbinary, 0.0, 255.0, THRESH_BINARY);
 					//cv::imshow("retinaAOIBinary", retinaAOIbinary);
 
 					// Find contours on the binary image
 					vector<vector<cv::Point>> contours;
 					vector<cv::Vec4i> hierarchy;
-					cv::findContours(retinaAOIbinary, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);
+					//cv::findContours(retinaAOIbinary, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE);
 
 					// If any found we can draw them back onto the label frame
 					if( !contours.empty() && !hierarchy.empty() )
@@ -239,7 +243,7 @@ int main( int argc, char** argv )
 						for(int label = 255; idx >= 0; idx = hierarchy[idx][0], label-- )
 						{
 							cv::Scalar color( label*16, label*16, label*16 );
-							drawContours(labelFrame, contours, idx, color, CV_FILLED, 8, hierarchy);
+							drawContours(labelFrame, contours, idx, color, FILLED, 8, hierarchy);
 						}
 					}
 
@@ -248,10 +252,10 @@ int main( int argc, char** argv )
 				if (bCalc_HoughCircles)
 				{
 					vector<cv::Vec3f> circles;
-					cv::HoughCircles(retinaThreshold_magno, circles, CV_HOUGH_GRADIENT, 
+					cv::HoughCircles(retinaThreshold_magno, circles, HOUGH_GRADIENT, 
 						2, retinaThreshold_magno.rows/4, high_thres == 0 ? 100 : high_thres, 16, 
 						retinaThreshold_magno.rows/8, retinaThreshold_magno.rows/6 );
-				//	cv::HoughCircles(retinaAOIbinary, circles, CV_HOUGH_GRADIENT, 
+				//	cv::HoughCircles(retinaAOIbinary, circles, HOUGH_GRADIENT, 
 				//		2, retinaAOIbinary.rows/4, high_thres == 0 ? 100 : high_thres, 64 );
 				
 					for( size_t i = 0; i < circles.size() && i < cMaxNumOfSaccadeCandidates; i++ )
@@ -273,7 +277,7 @@ int main( int argc, char** argv )
 				if (bCalc_Histogram)
 				{
 					cv::Mat normHist(retinaHistogram_magno);
-					normalize(retinaHistogram_magno, normHist, 0, imageHistogram_magno.rows, CV_MINMAX, CV_32F);
+					normalize(retinaHistogram_magno, normHist, 0, imageHistogram_magno.rows, NORM_MINMAX, CV_32F);
  
 					int binWidth = cvRound((double)imageHistogram_magno.cols/histogramSize);
 					for (int s = 0; s < histogramSize; s++ )
@@ -350,7 +354,7 @@ int main( int argc, char** argv )
 					int baseline=0;
 					std::ostringstream ossThr, ossCapFps, ossFps;
 					ossThr << Magno_OtsuThreshold;
-					ossCapFps << videoCapture.get(CV_CAP_PROP_FPS);
+					ossCapFps << videoCapture.get(CAP_PROP_FPS);
 					ossFps << fps;
 					string text = "Otsu Thr: " + ossThr.str() + "  FPS: " + (ossCapFps > 0 ? (ossCapFps.str() + " (" + ossFps.str() + ")") : ossFps.str());
 					cv::Size textSize1 = cv::getTextSize(text, fontFace, fontScale, thickness, &baseline);
@@ -428,7 +432,7 @@ int getOtsuThreshold(cv::Mat& src, float *maxValue)
          
     cv::Mat p(src);
     if (p.channels() == 3)
-        cvtColor(p, p, CV_BGR2GRAY);
+        cvtColor(p, p, COLOR_BGR2GRAY);
  
     calcHist(&p, 1, 0, cv::Mat(), retinaHistogram_magno, 1, &histogramSize, 0);
  
@@ -615,7 +619,7 @@ namespace connectedcomponents{
 						//B & D only
 						const int b = 0;
 						const int d = 1;
-						assert(connectivity == 4);
+						CV_Assert(connectivity == 4);
 						bool T[2];
 						for(size_t i = 0; i < 2; ++i){
 							int gr = r_i + G4[i][0];
@@ -780,143 +784,6 @@ int connectedComponents(cv::Mat &L, const cv::Mat &I, int connectivity)
 		}
 	}
 
-	CV_Error(CV_StsUnsupportedFormat, "unsupported label/image type");
+	CV_Error(Error::Code::StsUnsupportedFormat, "unsupported label/image type");
 	return -1;
 }
-
-void testLBPHFaceRecognizer()
-{
-	// These vectors hold the images and corresponding labels.
-	vector<cv::Mat> images;
-	vector<int>		labels;
-
-	// Read in the data. This can fail if no valid
-	// input filename is given.
-	try {
-		read_csv("ImageList.csv", images, labels);
-	} catch (cv::Exception& e) {
-		cerr << "Error opening file \"ImageList.csv\". Reason: " << e.msg << endl;
-		exit(1);
-	}
-	// Quit if there are not enough images for this demo.
-	if(images.size() <= 1) {
-		string error_message = "This demo needs at least 2 images to work. Please add more images to your data set!";
-		CV_Error(CV_StsError, error_message);
-	}
-
-	// Get the height from the first image. We'll need this later
-	// in code to reshape the images to their original size:
-	int height = images[0].rows;
-
-	// The following lines simply get the last images from
-	// your dataset and remove it from the vector. This is
-	// done, so that the training data (which we learn the
-	// cv::FaceRecognizer on) and the test data we test
-	// the model with, do not overlap.
-	cv::Mat testSample	= images[images.size() - 1];
-	int testLabel		= labels[labels.size() - 1];
-
-	images.pop_back();
-	labels.pop_back();
-
-	// The following lines create an LBPH model for
-	// face recognition and train it with the images and
-	// labels read from the given CSV file.
-	//
-	// The LBPHFaceRecognizer uses Extended Local Binary Patterns
-	// (it's probably configurable with other operators at a later
-	// point), and has the following default values
-	//
-	//      radius = 1
-	//      neighbors = 8
-	//      grid_x = 8
-	//      grid_y = 8
-	//
-	// So if you want a LBPH FaceRecognizer using a radius of
-	// 2 and 16 neighbors, call the factory method with:
-	//
-	//      cv::createLBPHFaceRecognizer(2, 16);
-	//
-	// And if you want a threshold (e.g. 123.0) call it with its default values:
-	//
-	//      cv::createLBPHFaceRecognizer(1,8,8,8,123.0)
-	//
-	cv::Ptr<cv::FaceRecognizer> model = cv::createLBPHFaceRecognizer();
-	model->train(images, labels);
-
-	// The following line predicts the label of a given
-	// test image:
-	int predictedLabel = model->predict(testSample);
-
-	//
-	// To get the confidence of a prediction call the model with:
-	//
-	//      int predictedLabel = -1;
-	//      double confidence = 0.0;
-	//      model->predict(testSample, predictedLabel, confidence);
-	//
-	string result_message = cv::format("Predicted class = %d / Actual class = %d.", predictedLabel, testLabel);
-	cout << result_message << endl;
-
-	// Sometimes you'll need to get/set internal model data,
-	// which isn't exposed by the public cv::FaceRecognizer.
-	// Since each cv::FaceRecognizer is derived from a
-	// cv::Algorithm, you can query the data.
-	//
-	// First we'll use it to set the threshold of the FaceRecognizer
-	// to 0.0 without retraining the model. This can be useful if
-	// you are evaluating the model:
-	//
-	model->set("threshold", 0.0);
-
-	// Now the threshold of this model is set to 0.0. A prediction now
-	// returns -1, as it's impossible to have a distance below it
-	predictedLabel = model->predict(testSample);
-	cout << "Predicted class = " << predictedLabel << endl;
-
-	// Show some informations about the model, as there's no cool
-	// Model data to display as in Eigenfaces/Fisherfaces.
-	// Due to efficiency reasons the LBP images are not stored
-	// within the model:
-	cout << "Model Information:" << endl;
-	string model_info = cv::format("\tLBPH(radius=%i, neighbors=%i, grid_x=%i, grid_y=%i, threshold=%.2f)",
-		model->getInt("radius"),
-		model->getInt("neighbors"),
-		model->getInt("grid_x"),
-		model->getInt("grid_y"),
-		model->getDouble("threshold"));
-	cout << model_info << endl;
-
-	// We could get the histograms for example:
-	vector<cv::Mat> histograms = model->getMatVector("histograms");
-
-	// But should I really visualize it? Probably the length is interesting:
-	cout << "Size of the histograms: " << histograms[0].total() << endl;
-
-	// Expected output (37 might be 39 between OSs?):
-	//
-	// Predicted class = 37 / Actual class = 37.
-	// Predicted class = -1
-	// Model Information:
-	//         LBPH(radius=1, neighbors=8, grid_x=8, grid_y=8, threshold=0.00)
-	// Size of the histograms: 16384
-	//
-
-}
-
-/*
-Wavelet decomposition seems relevant
-Saliency Map feeds into SDR
-Gabor or feature filtering?
-
-1) Focus of Attention is shifted to the location of the winner neuron
-2) The global inhibition of the WTA (winner-takes-all) is triggered and completely inhibits (resets) all WTA neurons
-3) Local inhibition is transiently activated in the Saliency Map, in an area with the size and new location of the FOA
-
-3 prevents FOA fromimmediately returning to a previously attended location. In order to slightly bias the model to subsequently jump to salient locations spatially close to the currently attended location, a small excitation is transiently activated in the SM, in a new surroundof the FOA ("proxminity preference" rule of Kock and Ullman)
-
-With no top-down instruction the FOA is a disk radius fixed to one sixth of width/height
-FOA jumps from one salient location to the next in approx. 30-70ms
-An attended area is inhibited for approx. 500-900ms
-
-*/

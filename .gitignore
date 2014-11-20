@@ -18,6 +18,7 @@ ipch/
 Release/
 Debug/
 build/
+packages/
 *.obj
 *.log
 *.tlog

@@ -36,7 +36,7 @@ BMS::BMS(const Mat& src, const int dw1, const int ow, const bool nm, const bool 
 {
 	_src=src.clone();
 	Mat lab;
-	cvtColor(_src,lab,CV_RGB2Lab);
+	cvtColor(_src,lab,COLOR_RGB2Lab);
 
 	vector<Mat> maps;
 	maps.push_back(lab);
