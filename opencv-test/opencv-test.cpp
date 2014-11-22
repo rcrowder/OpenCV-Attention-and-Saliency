@@ -35,6 +35,8 @@ An attended area is inhibited for approx. 500-900ms
 */
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>        // Basic OpenCV structures (cv::Mat)
+#include <opencv2/highgui/highgui.hpp>  // Video write
 
 #include <vector>
 #include <iostream>
@@ -48,7 +50,6 @@ An attended area is inhibited for approx. 500-900ms
 #include "BMS.h"
 
 using namespace std;
-using namespace cv;
 
 #ifndef uint8_t
 #define uint8_t		unsigned char
@@ -57,7 +58,7 @@ using namespace cv;
 #endif
 
 // Max number of potential saccade candidate
-static const vector<cv::Vec3f>::size_type cMaxNumOfSaccadeCandidates = 4;
+static const vector<cv::Vec3f>::size_type cMaxNumOfSaccadeCandidates = 8;
 
 int getOtsuThreshold(cv::Mat& src, float *maxValue);
 int connectedComponents(cv::Mat &L, const cv::Mat &I, int connectivity);
@@ -70,8 +71,8 @@ int main( int argc, char** argv )
 {
 	bool bCalc_Regions = true;
 	bool bCalc_HoughCircles = false;
-	bool bCalc_Histogram = true;
-	bool bCalc_BMS = false;
+	bool bCalc_Histogram = false;
+	bool bCalc_BMS = true;
 
     // Declare the retina input buffer... that will be fed differently in regard of the input media
     cv::Mat inputFrame;
@@ -79,16 +80,11 @@ int main( int argc, char** argv )
 	cv::VideoCapture videoCapture; // in case a video media is used, its manager is declared here
 
 	int frameCount = 0;
-	time_t start, end;
-	double fps, sec;
-
-	double windowWidthScale  = 0.33;
-	double windowHeightScale = 0.33;
+	double windowWidthScale  = 0.3;
+	double windowHeightScale = 0.3;
  
 	videoCapture.open("./Wildlife.wmv");
 	//videoCapture.open(0);
-
-	time(&start);
 
 	videoCapture >> inputFrame;
 	frameCount++;
@@ -109,10 +105,17 @@ int main( int argc, char** argv )
     cv::Mat retinaOutput_magno, prev_retinaOutput_magno;
  
     cv::Mat retinaThreshold_magno = cv::Mat::zeros(inputFrame.rows, inputFrame.cols, CV_32F);
+	cv::Mat imageHistogram_magno = cv::Mat::ones(256, 256, CV_8U)*255;
 
 	cv::Mat retinaAreaOfInterest = cv::Mat::zeros(retinaThreshold_magno.rows, retinaThreshold_magno.cols, CV_8UC3);
 	cv::Mat	retinaAOIgreyscale(retinaAreaOfInterest.rows, retinaAreaOfInterest.cols, CV_8UC1);
 	cv::Mat retinaAOIbinary(retinaAreaOfInterest.rows, retinaAreaOfInterest.cols, CV_8UC1);
+	cv::Mat retinaAOIedges = cv::Mat::zeros(retinaAreaOfInterest.rows, retinaAreaOfInterest.cols, CV_8UC1);
+
+	cv::Mat labelImage(inputFrame.size(), CV_32S);
+	cv::Mat labelFrame = cv::Mat::zeros(labelImage.rows,labelImage.cols,inputFrame.type());
+
+	cv::Mat bmsSaliencyMap = cv::Mat::zeros(retinaThreshold_magno.rows, retinaThreshold_magno.cols, CV_8UC3);
 
 	int fontFace = cv::FONT_HERSHEY_PLAIN;
     double fontScale = 1;
@@ -129,9 +132,7 @@ int main( int argc, char** argv )
 
 		// Activate log sampling? (favour foveal vision and subsamples peripheral vision)
 		if (useLogSampling)
-		{
 			myRetina = cv::bioinspired::createRetina(inputFrame.size(), true, cv::bioinspired::RETINA_COLOR_BAYER, true, 2.0, 10.0);
-		}
 		else
 			// -> else allocate "classical" retina :
 			myRetina = cv::bioinspired::createRetina(inputFrame.size());
@@ -153,11 +154,27 @@ int main( int argc, char** argv )
 		std::vector<cv::Vec3b> colors;
 		colors.push_back(cv::Vec3b(0, 0, 0));//background
 		for(int label = 1; label <= cMaxNumOfSaccadeCandidates; ++label){
-			colors.push_back(cv::Vec3b( label*64, (2*label)*32, (3*label)*32 ));
+			colors.push_back(cv::Vec3b( label*8, (2*label)*8, (3*label)*8 ));
 		}
 
-        // processing loop with stop condition
-        //while(frameCount < 50)
+		cv::imshow	  ("Retina Parvo",          retinaOutput_parvo);
+		cv::imshow	  ("Retina Input",          inputFrame);
+		cv::imshow	  ("Retina Magno",          retinaOutput_magno);
+
+//		cv::imshow	  ("Magno Histogram",		imageHistogram_magno);
+		cv::imshow	  ("Label frame",			labelFrame);
+		cv::imshow	  ("Area Of Interest",      retinaAreaOfInterest);
+		cv::imshow    ("BMS",					bmsSaliencyMap);
+ 
+		cv::moveWindow("Retina Parvo",			((inputFrame.cols+16)*0), ((inputFrame.rows+32)*0));
+		cv::moveWindow("Retina Input",			((inputFrame.cols+16)*1), ((inputFrame.rows+32)*0));
+		cv::moveWindow("Retina Magno",			((inputFrame.cols+16)*2), ((inputFrame.rows+32)*0));
+
+//		cv::moveWindow("Magno Histogram",		((inputFrame.cols+16)*0), ((inputFrame.rows+32)*1));
+		cv::moveWindow("Label frame", 			((inputFrame.cols+16)*0), ((inputFrame.rows+32)*1));
+		cv::moveWindow("Area Of Interest",		((inputFrame.cols+16)*1), ((inputFrame.rows+32)*1));
+		cv::moveWindow("BMS",					((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
+
 		while(videoCapture.grab())
         {
 			// If using video stream, then, grabbing a new frame
@@ -187,9 +204,9 @@ int main( int argc, char** argv )
             myRetina->getMagno(retinaOutput_magno);
  
             float maxMagnoHistVal = 0.f;
-            int Magno_OtsuThreshold = getOtsuThreshold(retinaOutput_magno, &maxMagnoHistVal) + 16;
+            int Magno_OtsuThreshold = getOtsuThreshold(retinaOutput_magno, &maxMagnoHistVal);// + 16;
  
-			//if (Magno_OtsuThreshold < 128)
+			if (1)//Magno_OtsuThreshold < 128)
             {
 				// Create the Threshold version of the magno pathway image
                 double high_thres = cv::threshold(retinaOutput_magno, retinaThreshold_magno, 
@@ -201,9 +218,6 @@ int main( int argc, char** argv )
 
 				// To grey scale we go
 				//retinaAreaOfInterest.convertTo(retinaAOIgreyscale, CV_8UC1);
-
-				cv::Mat labelImage(inputFrame.size(), CV_32S);
-				cv::Mat labelFrame = cv::Mat::zeros(labelImage.rows,labelImage.cols,inputFrame.type());
 		
 				if (bCalc_Regions)
 				{
@@ -219,7 +233,6 @@ int main( int argc, char** argv )
 					}
 
 					// Apply a canny edge filter to the label regions
-					cv::Mat retinaAOIedges = cv::Mat::zeros(retinaAreaOfInterest.rows, retinaAreaOfInterest.cols, CV_8UC1);
 					Canny(labelFrame, retinaAOIedges, 
 						0.5*high_thres, (double)Magno_OtsuThreshold);//high_thres); // 0.66*mean,1.33*mean
 
@@ -231,7 +244,7 @@ int main( int argc, char** argv )
 					// Find contours on the binary image
 					vector<vector<cv::Point>> contours;
 					vector<cv::Vec4i> hierarchy;
-					//cv::findContours(retinaAOIbinary, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE);
+					cv::findContours(retinaAOIbinary, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE);
 
 					// If any found we can draw them back onto the label frame
 					if( !contours.empty() && !hierarchy.empty() )
@@ -241,7 +254,7 @@ int main( int argc, char** argv )
 						int idx = 0;
 						for(int label = 255; idx >= 0; idx = hierarchy[idx][0], label-- )
 						{
-							cv::Scalar color( label*16, label*16, label*16 );
+							cv::Scalar color( label*8, label*8, label*8 );
 							drawContours(labelFrame, contours, idx, color, FILLED, 8, hierarchy);
 						}
 					}
@@ -272,9 +285,10 @@ int main( int argc, char** argv )
 					}
 				}
 
-				cv::Mat imageHistogram_magno = cv::Mat::ones(256, 256, CV_8U)*255;
 				if (bCalc_Histogram)
 				{
+					imageHistogram_magno = cv::Mat::ones(256, 256, CV_8U)*255;
+					
 					cv::Mat normHist(retinaHistogram_magno);
 					normalize(retinaHistogram_magno, normHist, 0, imageHistogram_magno.rows, NORM_MINMAX, CV_32F);
  
@@ -298,7 +312,7 @@ int main( int argc, char** argv )
 								cv::Scalar::all(0),
 								-1, 8, 0 );
 				}
-
+				else
 				if (bCalc_BMS)
 				{
 					//@inproceedings{zhang2013saliency,
@@ -322,64 +336,45 @@ int main( int argc, char** argv )
 
 					Mat src_small = retinaOutput_parvo;//inputFrame;
 					//resize(inputFrame,src_small,Size(600,inputFrame.rows*(600.0/inputFrame.cols)),0.0,0.0,INTER_AREA);// standard: width: 600 pixel
-					//GaussianBlur(src_small,src_small,Size(3,3),1,1);// removing noise
+					GaussianBlur(src_small,src_small,Size(3,3),1,1);// removing noise
 
 					/* Computing saliency */
 					BMS bms(src_small,DILATION_WIDTH_1,OPENING_WIDTH,NORMALIZE,HANDLE_BORDER);
 					bms.computeSaliency((float)SAMPLE_STEP);
 		
-					Mat result = bms.getSaliencyMap();
+					bmsSaliencyMap = bms.getSaliencyMap();
 
 					/* Post-processing */
-					//if (DILATION_WIDTH_2>0)
-					//	dilate(result,result,Mat(),Point(-1,-1),DILATION_WIDTH_2);
+					if (DILATION_WIDTH_2>0)
+						dilate(bmsSaliencyMap,bmsSaliencyMap,Mat(),Point(-1,-1),DILATION_WIDTH_2);
 
 					if (BLUR_STD > 0)
 					{
 						int blur_width = MIN(floor(BLUR_STD)*4+1,51);
-					//	GaussianBlur(result,result,Size(blur_width,blur_width),BLUR_STD,BLUR_STD);
+						GaussianBlur(bmsSaliencyMap,bmsSaliencyMap,Size(blur_width,blur_width),BLUR_STD,BLUR_STD);
 					}	
 
-					cv::imshow("BMS", result);
+					cv::imshow("BMS", bmsSaliencyMap);
 				}
 
-				time(&end);
-				sec = difftime(end,start);
-
-				fps = frameCount / sec;
-
-				if (1)
+				if (0)
 				{
 					int baseline=0;
-					std::ostringstream ossThr, ossCapFps, ossFps;
+					std::ostringstream ossThr;
 					ossThr << Magno_OtsuThreshold;
-					ossCapFps << videoCapture.get(CAP_PROP_FPS);
-					ossFps << fps;
-					string text = "Otsu Thr: " + ossThr.str() + "  FPS: " + (ossCapFps > 0 ? (ossCapFps.str() + " (" + ossFps.str() + ")") : ossFps.str());
+					string text = "Otsu Thr: " + ossThr.str();
 					cv::Size textSize1 = cv::getTextSize(text, fontFace, fontScale, thickness, &baseline);
-					baseline += thickness;
 					cv::Point textOrg1(0, textSize1.height);
 					cv::putText(inputFrame, text, textOrg1, fontFace, fontScale, cv::Scalar::all(255), thickness, 8);
 				}
 
-				cv::imshow	  ("Retina Input",          inputFrame);
 				cv::imshow	  ("Retina Parvo",          retinaOutput_parvo);
+				cv::imshow	  ("Retina Input",          inputFrame);
 				cv::imshow	  ("Retina Magno",          retinaOutput_magno);
-				cv::imshow	  ("Label frame",			labelFrame);
+
+//				cv::imshow	  ("Magno Histogram",		imageHistogram_magno);
 				cv::imshow	  ("Area Of Interest",      retinaAreaOfInterest);
-				//cv::imshow	  ("Magno Otsu Threshold",  retinaThreshold_magno);
-
-				if (bCalc_Histogram)
-					cv::imshow	  ("Magno Histogram",		imageHistogram_magno);
- 
-				cv::moveWindow("Retina Parvo",			((inputFrame.cols+16)*0), ((inputFrame.rows+32)*0));
-				cv::moveWindow("Retina Input",			((inputFrame.cols+16)*1), ((inputFrame.rows+32)*0));
-				cv::moveWindow("Retina Magno",			((inputFrame.cols+16)*2), ((inputFrame.rows+32)*0));
-
-				cv::moveWindow("Magno Histogram",		((inputFrame.cols+16)*0), ((inputFrame.rows+32)*1));
-				cv::moveWindow("Area Of Interest",		((inputFrame.cols+16)*1), ((inputFrame.rows+32)*1));
-				cv::moveWindow("Label frame", 			((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
-				//cv::moveWindow("Magno Otsu Threshold",  ((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
+				cv::imshow	  ("Label frame",			labelFrame);
             }
  
             if (cv::waitKey(30) >= 0)
@@ -470,7 +465,6 @@ int getOtsuThreshold(cv::Mat& src, float *maxValue)
         *maxValue = maxHist;
 
     return t;
-
 }
  
  
@@ -540,8 +534,9 @@ namespace connectedcomponents{
 	const int G4[2][2] = {{-1, 0}, {0, -1}};//b, d neighborhoods
 	const int G8[4][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}};//a, b, c, d neighborhoods
 
-	//Based on "Two Strategies to Speed up Connected Components Algorithms", the SAUF (Scan array union find) 
-	// variant using decision trees, Kesheng Wu, et al
+	//Based on "Two Strategies to Speed up Connected Components Algorithms", 
+	// the SAUF (Scan array union find) variant using decision trees, 
+	// Kesheng Wu, et al
 	template<typename LabelT, typename PixelT, int connectivity = 8>
 	struct LabelingImpl{
 		LabelT operator()(cv::Mat &L, const cv::Mat &I){
