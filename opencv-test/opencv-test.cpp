@@ -73,20 +73,19 @@ int main( int argc, char** argv )
 	bool bCalc_Histogram = true;
 	bool bCalc_BMS = false;
 
-	double windowWidthScale = 0.5;
-	double windowHeightScale = 0.5;
- 
+    // Declare the retina input buffer... that will be fed differently in regard of the input media
+    cv::Mat inputFrame;
+
+	cv::VideoCapture videoCapture; // in case a video media is used, its manager is declared here
+
 	int frameCount = 0;
 	time_t start, end;
 	double fps, sec;
 
-    // Declare the retina input buffer... that will be fed differently in regard of the input media
-    cv::Mat inputFrame;
-    cv::VideoCapture videoCapture; // in case a video media is used, its manager is declared here
-
-	videoCapture.open("./Wildlife.wmv");	// 10 frames per second, loops
-	//videoCapture.open("./bbc_two.mp4");	// 25 frames per second
-	//videoCapture.open("./768x576.avi");	// 10 frames per second, loops
+	double windowWidthScale  = 0.33;
+	double windowHeightScale = 0.33;
+ 
+	videoCapture.open("./Wildlife.wmv");
 	//videoCapture.open(0);
 
 	time(&start);
@@ -154,7 +153,7 @@ int main( int argc, char** argv )
 		std::vector<cv::Vec3b> colors;
 		colors.push_back(cv::Vec3b(0, 0, 0));//background
 		for(int label = 1; label <= cMaxNumOfSaccadeCandidates; ++label){
-			colors.push_back(cv::Vec3b( label*32, label*0, label*0 ));
+			colors.push_back(cv::Vec3b( label*64, (2*label)*32, (3*label)*32 ));
 		}
 
         // processing loop with stop condition
@@ -373,15 +372,14 @@ int main( int argc, char** argv )
 				if (bCalc_Histogram)
 					cv::imshow	  ("Magno Histogram",		imageHistogram_magno);
  
-				cv::moveWindow("Retina Input",			((inputFrame.cols+16)*0), ((inputFrame.rows+32)*0));
-				cv::moveWindow("Retina Parvo",			((inputFrame.cols+16)*1), ((inputFrame.rows+32)*0));
+				cv::moveWindow("Retina Parvo",			((inputFrame.cols+16)*0), ((inputFrame.rows+32)*0));
+				cv::moveWindow("Retina Input",			((inputFrame.cols+16)*1), ((inputFrame.rows+32)*0));
 				cv::moveWindow("Retina Magno",			((inputFrame.cols+16)*2), ((inputFrame.rows+32)*0));
-				cv::moveWindow("Label frame", 			((inputFrame.cols+16)*0), ((inputFrame.rows+32)*1));
-				cv::moveWindow("Focus of Attention",	((inputFrame.cols+16)*1), ((inputFrame.rows+32)*1));
+
+				cv::moveWindow("Magno Histogram",		((inputFrame.cols+16)*0), ((inputFrame.rows+32)*1));
+				cv::moveWindow("Area Of Interest",		((inputFrame.cols+16)*1), ((inputFrame.rows+32)*1));
+				cv::moveWindow("Label frame", 			((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
 				//cv::moveWindow("Magno Otsu Threshold",  ((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
-				
-				if (bCalc_Histogram)
-					cv::moveWindow("Magno Histogram",		((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
             }
  
             if (cv::waitKey(30) >= 0)
