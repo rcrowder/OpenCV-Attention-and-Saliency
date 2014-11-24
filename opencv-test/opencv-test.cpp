@@ -136,8 +136,8 @@ int main( int argc, char** argv )
 	bool useSintelData = true;
 	bool useMiddleburyData = false;
 
-	double windowWidthScale  = 0.33;
-	double windowHeightScale = 0.33;
+	double windowWidthScale  = 0.5;
+	double windowHeightScale = 0.5;
 
 	MPISintel *_MPISintel = new MPISintel();
 
