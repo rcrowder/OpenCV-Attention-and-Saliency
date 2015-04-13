@@ -34,3 +34,5 @@ IEEE Transactions on Pattern Analysis and Machine Intelligence, 20(11), 1254–1
   howpublished = {http://saliency.mit.edu/}  
 }
 
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/rcrowder/opencv-attention-and-saliency/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
