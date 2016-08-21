@@ -10,6 +10,9 @@ During dicovery of ML and MI techniques
 
 Git, CMake, C++ compiler, OpenCV 3.x with contrib modules
 
+## Description
+
+
 
 ## References
 
@@ -51,12 +54,6 @@ http://web.cs.hacettepe.edu.tr/~aykut/projects/saliencymemorability/index.html
 Itti, L., Koch, C., & Niebur, E. (1998). A model of saliency-based visual attention for rapid scene analysis. 
 IEEE Transactions on Pattern Analysis and Machine Intelligence, 20(11), 1254–1259.
 
-@misc{mit-saliency-benchmark,
-  author       = {Zoya Bylinskii and Tilke Judd and Fr{\'e}do Durand and Aude Oliva and Antonio Torralba},
-  title        = {MIT Saliency Benchmark},
-  howpublished = {http://saliency.mit.edu/}
-}
-
 B. Celikkale, A. Erdem and E. Erdem (2013): Visual Attention-driven Spatial Pooling for Image Memorability  
 IEEE Computer Vision and Pattern Recognition Workshops (CVPRW), Portland, Oregon, USA, June 2013.  
 
@@ -66,19 +63,17 @@ https://dl.dropboxusercontent.com/u/51202818/website/SfN2013_MTposter.pdf
 
 http://terpconnect.umd.edu/~ywcui/Yuweis_Homepage/Publication.html
 
-		// http://ps.is.tue.mpg.de/project/MPI_Sintel_Flow
-		// MPI Sintel Flow 'testing' data set
 
-		//@inproceedings{Wulff:ECCVws:2012,
-		// title = {Lessons and insights from creating a synthetic optical flow benchmark},
-		// author = {Wulff, J. and Butler, D. J. and Stanley, G. B. and Black, M. J.},
-		// booktitle = {ECCV Workshop on Unsolved Problems in Optical Flow and Stereo Estimation},
-		// editor = {{A. Fusiello et al. (Eds.)}},
-		// publisher = {Springer-Verlag},
-		// series = {Part II, LNCS 7584},
-		// month = oct,
-		// pages = {168--177},
-		// year = {2012}
-		//}
+## Datasets
 
-		// http://vision.middlebury.edu/flow/data/
+http://vision.middlebury.edu/flow/data/
+
+http://homepages.inf.ed.ac.uk/rbf/CVonline/Imagedbase.htm
+
+http://ps.is.tue.mpg.de/project/MPI_Sintel_Flow
+
+@misc{mit-saliency-benchmark,
+  author       = {Zoya Bylinskii and Tilke Judd and Fr{\'e}do Durand and Aude Oliva and Antonio Torralba},
+  title        = {MIT Saliency Benchmark},
+  howpublished = {http://saliency.mit.edu/}
+}

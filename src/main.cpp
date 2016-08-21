@@ -1,23 +1,8 @@
 
 /* Saliency testing using OpenCV
 
-A. Erdem and E. Erdem. (2003): Visual saliency estimation by nonlinearly integrating features using region covariances
-http://www.journalofvision.org/content/13/4/11.full.pdf
+TODO/Notes:
 
-B. Celikkale, A. Erdem and E. Erdem (2013): Visual Attention-driven Spatial Pooling for Image Memorability.
-IEEE Computer Vision and Pattern Recognition Workshops (CVPRW), Portland, Oregon, USA, June 2013.
-
-Itti, L., Koch, C., & Niebur, E. (1998). A model of saliency-based visual attention for rapid scene analysis.
-IEEE Transactions on Pattern Analysis and Machine Intelligence, 20(11), 1254–1259.
-
-@misc{mit-saliency-benchmark,
-  author       = {Zoya Bylinskii and Tilke Judd and Fr{\'e}do Durand and Aude Oliva and Antonio Torralba},
-  title        = {MIT Saliency Benchmark},
-  howpublished = {http://saliency.mit.edu/}
-}
-*/
-
-/*
 Wavelet decomposition seems relevant
 Saliency Map feeds into SDR
 Gabor or feature filtering?
@@ -61,151 +46,24 @@ using namespace cv;
 #define int32_t		int
 #endif
 
-// Max number of potential saccade candidate
-static const vector<Vec3f>::size_type cMaxNumOfSaccadeCandidates = 256;
+// Max number of potential saccade candidates
+static const vector<Vec3f>::size_type cMaxNumOfSaccadeCandidates = 4;
 
 int getOtsuThreshold(Mat& src, float *maxValue);
 int connectedComponents(Mat &L, const Mat &I, int connectivity);
 
-MatND retinaHistogram_magno;
-int histogramSize = 256;
-
-class MPISintel
-{
-private:
-  WIN32_FIND_DATA ffd;
-  HANDLE hFind;
-
-public:
-  MPISintel() :
-    mCurrentIndex(0),
-    hFind(INVALID_HANDLE_VALUE)
-  {
-  }
-
-  ~MPISintel()
-  {
-    if (hFind != INVALID_HANDLE_VALUE)
-      FindClose(hFind);
-  }
-
-  vector<string>	mDirectoryNames;
-  int				mCurrentIndex;
-
-  string FirstFile()
-  {
-    hFind = FindFirstFile((mDirectoryNames[mCurrentIndex] + string("*.png")).c_str(), &ffd);
-    if (INVALID_HANDLE_VALUE == hFind)
-      return "";
-    if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-      return "";
-
-    return mDirectoryNames[mCurrentIndex] + ffd.cFileName;
-  }
-
-  string NextFile()
-  {
-    if (FindNextFile(hFind, &ffd) == 0)
-    {
-      mCurrentIndex++;
-      if (mCurrentIndex >= mDirectoryNames.size())
-        return "";
-
-      FindClose(hFind);
-      hFind = FindFirstFile((mDirectoryNames[mCurrentIndex] + string("*.png")).c_str(), &ffd);
-    }
-    if (INVALID_HANDLE_VALUE == hFind)
-      return "";
-    if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-      return "";
-
-    return mDirectoryNames[mCurrentIndex] + ffd.cFileName;
-  }
-
-};
-
 int main(int argc, char** argv)
 {
-  bool bCalc_Regions = true;
-  bool bCalc_HoughCircles = false;
-  bool bCalc_Histogram = false;
-  bool bCalc_BMS = false;
+  MatND retinaHistogram_magno;
+  int histogramSize = 256;
 
-  bool useSintelData = false;
-  bool useMiddleburyData = false;
+  bool bCalc_Regions = true;
+  bool bCalc_HoughCircles = true;
+  bool bCalc_Histogram = true;
+  bool bCalc_BMS = true;// &!bCalc_Histogram;
 
   double windowWidthScale = 0.5;
   double windowHeightScale = 0.5;
-
-  MPISintel *_MPISintel = new MPISintel();
-
-  if (useSintelData)
-  {
-    // http://ps.is.tue.mpg.de/project/MPI_Sintel_Flow
-    // MPI Sintel Flow 'testing' data set
-
-    //@inproceedings{Wulff:ECCVws:2012,
-    // title = {Lessons and insights from creating a synthetic optical flow benchmark},
-    // author = {Wulff, J. and Butler, D. J. and Stanley, G. B. and Black, M. J.},
-    // booktitle = {ECCV Workshop on Unsolved Problems in Optical Flow and Stereo Estimation},
-    // editor = {{A. Fusiello et al. (Eds.)}},
-    // publisher = {Springer-Verlag},
-    // series = {Part II, LNCS 7584},
-    // month = oct,
-    // pages = {168--177},
-    // year = {2012}
-    //}
-
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/ambush_1/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/ambush_3/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/bamboo_3/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/cave_3/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/market_1/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/PERTURBED_market_3/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/market_4/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/mountain_2/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/PERTURBED_shaman_1/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/temple_1/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/tiger/");
-    _MPISintel->mDirectoryNames.push_back("./build/MPI-Sintel/testing/test/clean/wall/");
-  }
-
-  if (useMiddleburyData)
-  {
-    // http://vision.middlebury.edu/flow/data/
-    // Eval  - With hidden ground-truth flow
-    // Other - With public ground-truth flow. (used for training)
-
-    // Hidden Texture
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Army/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Mequon/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Schefflera/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Wooden/");
-
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/RubberWhale/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/Hydrangea/");
-
-    // Synthetic
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Grove/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Urban/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Yosemite/");
-
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/Grove2/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/Grove3/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/Urban2/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/Urban3/");
-
-    // High-speed camera (no GT)
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Backyard/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Basketball/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Dumptruck/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/eval-data/Evergreen/");
-
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/Beanbags/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/DogDance/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/MiniCooper/");
-    _MPISintel->mDirectoryNames.push_back("./build/Middlebury/other-data/Walking/");
-  }
 
   int frameCount = 0;
 
@@ -213,34 +71,19 @@ int main(int argc, char** argv)
   Mat inputFrame;
   VideoCapture videoCapture;
 
-  string fileName = "";
-  if (useSintelData || useMiddleburyData)
-  {
-    fileName = _MPISintel->FirstFile();
-    inputFrame = imread(fileName);
-  }
-  else
-  {
-    //videoCapture.open(0);
-    videoCapture.open("./data/Wildlife.wmv");
-    videoCapture >> inputFrame;
-  }
+  videoCapture.open(0);
+  videoCapture >> inputFrame;
 
   frameCount++;
 
   if (inputFrame.empty())
   {
-    String fileName = "./data/Burt.jpg";
-    inputFrame = imread(fileName, 0);
-
-    windowWidthScale = 0.125;
-    windowHeightScale = 0.125;
+    std::cout << "Cannot open webcam" << std::endl;
+    return 1;
   }
 
   if (!inputFrame.empty())
     resize(inputFrame, inputFrame, Size(), windowWidthScale, windowHeightScale, INTER_AREA);
-
-  VideoWriter writer("./output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30, inputFrame.size());
 
   // Declare retina output buffers
   Mat retinaOutput_parvo, prev_retinaOutput_parvo;
@@ -304,33 +147,28 @@ int main(int argc, char** argv)
     imshow("Retina Input", inputFrame);
     imshow("Retina Magno", retinaOutput_magno);
 
-//		imshow	  ("Magno Histogram",		imageHistogram_magno);
-    imshow("Label frame", labelFrame);
+		imshow("Magno Histogram",		imageHistogram_magno);
+//    imshow("Label frame", labelFrame);
     imshow("Area Of Interest", retinaAreaOfInterest);
-//		imshow    ("BMS",					bmsSaliencyMap);
+		imshow("BMS",					bmsSaliencyMap);
 
     moveWindow("Retina Parvo", ((inputFrame.cols + 16) * 0), ((inputFrame.rows + 32) * 0));
     moveWindow("Retina Input", ((inputFrame.cols + 16) * 1), ((inputFrame.rows + 32) * 0));
     moveWindow("Retina Magno", ((inputFrame.cols + 16) * 2), ((inputFrame.rows + 32) * 0));
 
-//		moveWindow("Magno Histogram",		((inputFrame.cols+16)*0), ((inputFrame.rows+32)*1));
-    moveWindow("Label frame", ((inputFrame.cols + 16) * 0), ((inputFrame.rows + 32) * 1));
+		moveWindow("Magno Histogram",		((inputFrame.cols+16)*0), ((inputFrame.rows+32)*1));
+//    moveWindow("Label frame", ((inputFrame.cols + 16) * 0), ((inputFrame.rows + 32) * 1));
     moveWindow("Area Of Interest", ((inputFrame.cols + 16) * 1), ((inputFrame.rows + 32) * 1));
-//		moveWindow("BMS",					((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
+		moveWindow("BMS",					((inputFrame.cols+16)*2), ((inputFrame.rows+32)*1));
 
-    while ((useSintelData && fileName != "") || videoCapture.grab())
+//  VideoWriter writer("./output.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30, inputFrame.size());
+
+    while (videoCapture.grab())
     {
-      // If using video stream, then, grabbing a new frame
-
-      if (useSintelData || useMiddleburyData)
+      if (videoCapture.isOpened())
       {
-        inputFrame = imread(fileName);
+        videoCapture >> inputFrame;
       }
-      else
-        if (videoCapture.isOpened())
-        {
-          videoCapture >> inputFrame;
-        }
 
       frameCount++;
 
@@ -461,7 +299,7 @@ int main(int argc, char** argv)
             Scalar::all(0),
             -1, 8, 0);
         }
-        else
+//        else
           if (bCalc_BMS)
           {
             //@inproceedings{zhang2013saliency,
@@ -506,10 +344,9 @@ int main(int argc, char** argv)
 
         if (0)
         {
-          //	std::ostringstream ossThr;
-          //	ossThr << Magno_OtsuThreshold;
-          //	string text = "Otsu Thr: " + ossThr.str();
-          string text = fileName.substr(fileName.find_last_of('/') + 1, fileName.size());
+          std::ostringstream ossThr;
+          ossThr << Magno_OtsuThreshold;
+          string text = "Otsu Thr: " + ossThr.str();
 
           int baseline = 0;
           Size textSize1 = getTextSize(text, fontFace, fontScale, thickness, &baseline);
@@ -522,21 +359,17 @@ int main(int argc, char** argv)
         imshow("Retina Input", inputFrame);
         imshow("Retina Magno", retinaOutput_magno);
 
-//				imshow	  ("Magno Histogram",		imageHistogram_magno);
+				imshow("Magno Histogram",		imageHistogram_magno);
+//        imshow("Label frame", labelFrame);
         imshow("Area Of Interest", retinaAreaOfInterest);
-        imshow("Label frame", labelFrame);
-//				imshow	  ("BMS",					bmsSaliencyMap);
+				imshow("BMS",					bmsSaliencyMap);
       }
 
       //writer.write(inputFrame);
 
       if (waitKey(30) >= 0)
         break;
-
-      fileName = _MPISintel->NextFile();
     }
-
-    delete _MPISintel;
   }
   catch (Exception e)
   {
